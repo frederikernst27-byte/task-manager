@@ -15,7 +15,6 @@
       --accent2: #a78bfa;
       --done: #34d399;
       --danger: #fb7185;
-      --radius: 20px;
     }
     * { box-sizing: border-box; }
     body {
@@ -44,7 +43,7 @@
     .list { display:grid; gap:10px; }
     .category-card, .task-card { background: rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:18px; padding:14px; }
     .category-card.active { outline:2px solid rgba(96,165,250,.5); }
-    input, textarea, select {
+    input, textarea {
       width: 100%; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,0.04);
       color: var(--text); border:1px solid rgba(255,255,255,0.08); font: inherit; outline:none;
     }
@@ -68,7 +67,7 @@
   <div class="app">
     <section class="hero">
       <h1>Task Manager</h1>
-      <p>Allgemeiner Aufgabenmanager mit editierbaren Kategorien, persistent gespeicherter Datenbank, Markdown-Import/Export und Statistiken pro Kategorie.</p>
+      <p>Allgemeiner Aufgabenmanager mit editierbaren Kategorien, localStorage-Speicherung, Markdown-Import/Export und Statistiken pro Kategorie.</p>
       <div class="stats" id="stats"></div>
     </section>
 
@@ -123,173 +122,179 @@
   </div>
 
   <script>
-    let categories = [];
-    let tasks = [];
+    const STORAGE_KEY = 'frederik-task-manager-v1';
+    let state = loadState();
     let selectedCategoryId = null;
     let editingTaskId = null;
 
-    async function api(path, options = {}) {
-      const res = await fetch(path, {
-        headers: { 'Content-Type': 'application/json' },
-        ...options,
-      });
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText || `Request failed: ${res.status}`);
-      }
-      const type = res.headers.get('content-type') || '';
-      return type.includes('application/json') ? res.json() : res.text();
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      return { categories: [], tasks: [] };
     }
 
-    function showError(error) {
-      const message = error?.message || String(error) || 'Unbekannter Fehler';
-      alert(`Speichern fehlgeschlagen: ${message}`);
-      console.error(error);
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
 
-    async function load() {
-      categories = await api('/api/categories');
-      tasks = await api('/api/tasks');
-      const summary = await api('/api/summary');
-      renderStats(summary);
+    function uid() {
+      return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    function render() {
+      renderStats();
       renderCategories();
       renderTasks();
     }
 
-    function renderStats(summary) {
-      const stats = document.getElementById('stats');
-      stats.innerHTML = `
-        <div class="stat"><div class="label">Gesamt</div><div class="value">${summary.total}</div></div>
-        <div class="stat"><div class="label">Erledigt</div><div class="value">${summary.done}</div></div>
-        <div class="stat"><div class="label">Offen</div><div class="value">${summary.open}</div></div>
-        <div class="stat"><div class="label">Kategorien</div><div class="value">${summary.categories}</div></div>
+    function renderStats() {
+      const total = state.tasks.length;
+      const done = state.tasks.filter(t => t.done).length;
+      const open = total - done;
+      const categories = state.categories.length;
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><div class="label">Gesamt</div><div class="value">${total}</div></div>
+        <div class="stat"><div class="label">Erledigt</div><div class="value">${done}</div></div>
+        <div class="stat"><div class="label">Offen</div><div class="value">${open}</div></div>
+        <div class="stat"><div class="label">Kategorien</div><div class="value">${categories}</div></div>
       `;
     }
 
     function renderCategories() {
       const list = document.getElementById('categoryList');
-      if (!categories.length) {
+      if (!state.categories.length) {
         list.innerHTML = '<div class="category-card small">Noch keine Kategorien vorhanden.</div>';
         return;
       }
-      list.innerHTML = categories.map(cat => `
-        <div class="category-card ${selectedCategoryId === cat.id ? 'active' : ''}">
-          <div class="task-top">
-            <div>
-              <strong>${escapeHtml(cat.name)}</strong>
-              <div class="small">${cat.doneTasks}/${cat.totalTasks} erledigt</div>
-            </div>
-            <div class="toolbar">
-              <button class="btn-secondary" onclick="selectCategory(${cat.id})">Öffnen</button>
-              <button class="btn-secondary" onclick="renameCategory(${cat.id}, ${JSON.stringify(cat.name)})">Bearbeiten</button>
-              <button class="btn-danger" onclick="deleteCategory(${cat.id})">Löschen</button>
+
+      list.innerHTML = state.categories.map(cat => {
+        const tasks = state.tasks.filter(t => t.categoryId === cat.id);
+        const done = tasks.filter(t => t.done).length;
+        return `
+          <div class="category-card ${selectedCategoryId === cat.id ? 'active' : ''}">
+            <div class="task-top">
+              <div>
+                <strong>${escapeHtml(cat.name)}</strong>
+                <div class="small">${done}/${tasks.length} erledigt</div>
+              </div>
+              <div class="toolbar">
+                <button class="btn-secondary" onclick="selectCategory('${cat.id}')">Öffnen</button>
+                <button class="btn-secondary" onclick="renameCategory('${cat.id}')">Bearbeiten</button>
+                <button class="btn-danger" onclick="deleteCategory('${cat.id}')">Löschen</button>
+              </div>
             </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function renderTasks() {
       const list = document.getElementById('taskList');
-      const filtered = selectedCategoryId ? tasks.filter(t => t.categoryId === selectedCategoryId) : tasks;
-      const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+      const filtered = selectedCategoryId ? state.tasks.filter(t => t.categoryId === selectedCategoryId) : state.tasks;
+      const selectedCategory = state.categories.find(c => c.id === selectedCategoryId);
       document.getElementById('tasksTitle').textContent = selectedCategory ? `Aufgaben – ${selectedCategory.name}` : 'Aufgaben';
+
       if (!filtered.length) {
         list.innerHTML = '<div class="task-card small">Noch keine Aufgaben in dieser Ansicht.</div>';
         return;
       }
-      list.innerHTML = filtered.map(task => `
-        <div class="task-card ${task.done ? 'done-card' : ''}">
-          <div class="task-top">
-            <div>
-              <strong>${escapeHtml(task.title)}</strong>
-              <div class="small">${escapeHtml(task.description || '')}</div>
-              <div class="task-meta">
-                <span class="pill ${task.done ? 'done' : ''}">${task.done ? 'Erledigt' : 'Offen'}</span>
-                <span class="pill">${escapeHtml(task.categoryName || 'Ohne Kategorie')}</span>
+
+      list.innerHTML = filtered.map(task => {
+        const category = state.categories.find(c => c.id === task.categoryId);
+        return `
+          <div class="task-card ${task.done ? 'done-card' : ''}">
+            <div class="task-top">
+              <div>
+                <strong>${escapeHtml(task.title)}</strong>
+                <div class="small">${escapeHtml(task.description || '')}</div>
+                <div class="task-meta">
+                  <span class="pill ${task.done ? 'done' : ''}">${task.done ? 'Erledigt' : 'Offen'}</span>
+                  <span class="pill">${escapeHtml(category?.name || 'Ohne Kategorie')}</span>
+                </div>
+              </div>
+              <div class="toolbar">
+                <button class="btn-secondary" onclick="editTask('${task.id}')">Bearbeiten</button>
+                <button class="btn-secondary" onclick="toggleTask('${task.id}')">${task.done ? 'Öffnen' : 'Abhaken'}</button>
+                <button class="btn-danger" onclick="deleteTask('${task.id}')">Löschen</button>
               </div>
             </div>
-            <div class="toolbar">
-              <button class="btn-secondary" onclick='editTask(${JSON.stringify(task)})'>Bearbeiten</button>
-              <button class="btn-secondary" onclick="toggleTask(${task.id}, ${task.done ? 'false' : 'true'})">${task.done ? 'Öffnen' : 'Abhaken'}</button>
-              <button class="btn-danger" onclick="deleteTask(${task.id})">Löschen</button>
-            </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
-    async function addCategory() {
-      try {
-        const name = document.getElementById('newCategoryName').value.trim();
-        if (!name) return;
-        await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
-        document.getElementById('newCategoryName').value = '';
-        await load();
-      } catch (error) {
-        showError(error);
-      }
+    function addCategory() {
+      const name = document.getElementById('newCategoryName').value.trim();
+      if (!name) return;
+      state.categories.unshift({ id: uid(), name, createdAt: new Date().toISOString() });
+      document.getElementById('newCategoryName').value = '';
+      saveState();
+      render();
     }
 
-    async function renameCategory(id, currentName) {
-      try {
-        const name = prompt('Neuer Kategoriename', currentName);
-        if (!name || !name.trim()) return;
-        await api(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
-        await load();
-      } catch (error) {
-        showError(error);
-      }
+    function renameCategory(id) {
+      const category = state.categories.find(c => c.id === id);
+      if (!category) return;
+      const name = prompt('Neuer Kategoriename', category.name);
+      if (!name || !name.trim()) return;
+      category.name = name.trim();
+      saveState();
+      render();
     }
 
-    async function deleteCategory(id) {
-      try {
-        if (!confirm('Kategorie und zugehörige Aufgaben löschen?')) return;
-        await api(`/api/categories/${id}`, { method: 'DELETE' });
-        if (selectedCategoryId === id) selectedCategoryId = null;
-        await load();
-      } catch (error) {
-        showError(error);
-      }
+    function deleteCategory(id) {
+      if (!confirm('Kategorie und zugehörige Aufgaben löschen?')) return;
+      state.categories = state.categories.filter(c => c.id !== id);
+      state.tasks = state.tasks.filter(t => t.categoryId !== id);
+      if (selectedCategoryId === id) selectedCategoryId = null;
+      saveState();
+      render();
     }
 
     function selectCategory(id) {
       selectedCategoryId = selectedCategoryId === id ? null : id;
-      renderCategories();
-      renderTasks();
+      render();
     }
 
-    async function saveTask() {
-      try {
-        const title = document.getElementById('taskTitle').value.trim();
-        const description = document.getElementById('taskDescription').value.trim();
-        if (!title) return;
-        if (editingTaskId) {
-          const existing = tasks.find(t => t.id === editingTaskId);
-          await api(`/api/tasks/${editingTaskId}`, {
-            method: 'PUT',
-            body: JSON.stringify({ title, description, done: !!existing.done, categoryId: selectedCategoryId || existing.categoryId || null })
-          });
-        } else {
-          await api('/api/tasks', {
-            method: 'POST',
-            body: JSON.stringify({ title, description, categoryId: selectedCategoryId || null })
-          });
-        }
-        clearTaskForm();
-        await load();
-      } catch (error) {
-        showError(error);
+    function saveTask() {
+      const title = document.getElementById('taskTitle').value.trim();
+      const description = document.getElementById('taskDescription').value.trim();
+      if (!title) return;
+
+      if (editingTaskId) {
+        const task = state.tasks.find(t => t.id === editingTaskId);
+        if (!task) return;
+        task.title = title;
+        task.description = description;
+        task.categoryId = selectedCategoryId || task.categoryId || null;
+        task.updatedAt = new Date().toISOString();
+      } else {
+        state.tasks.unshift({
+          id: uid(),
+          title,
+          description,
+          done: false,
+          categoryId: selectedCategoryId || null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       }
+
+      clearTaskForm();
+      saveState();
+      render();
     }
 
-    function editTask(task) {
-      editingTaskId = task.id;
+    function editTask(id) {
+      const task = state.tasks.find(t => t.id === id);
+      if (!task) return;
+      editingTaskId = id;
       document.getElementById('taskTitle').value = task.title;
       document.getElementById('taskDescription').value = task.description || '';
       selectedCategoryId = task.categoryId || null;
-      renderCategories();
-      renderTasks();
+      render();
     }
 
     function clearTaskForm() {
@@ -298,59 +303,95 @@
       document.getElementById('taskDescription').value = '';
     }
 
-    async function toggleTask(id, done) {
-      try {
-        const existing = tasks.find(t => t.id === id);
-        await api(`/api/tasks/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            title: existing.title,
-            description: existing.description,
-            categoryId: existing.categoryId,
-            done
-          })
+    function toggleTask(id) {
+      const task = state.tasks.find(t => t.id === id);
+      if (!task) return;
+      task.done = !task.done;
+      task.updatedAt = new Date().toISOString();
+      saveState();
+      render();
+    }
+
+    function deleteTask(id) {
+      if (!confirm('Aufgabe löschen?')) return;
+      state.tasks = state.tasks.filter(t => t.id !== id);
+      saveState();
+      render();
+    }
+
+    function exportMarkdown() {
+      let md = '# Aufgaben Export\n\n';
+      state.categories.forEach(category => {
+        md += `## ${category.name}\n\n`;
+        const tasks = state.tasks.filter(t => t.categoryId === category.id);
+        if (!tasks.length) md += '- [ ] Keine Aufgaben\n';
+        tasks.forEach(task => {
+          md += `- [${task.done ? 'x' : ' '}] ${task.title}`;
+          if (task.description) md += ` — ${task.description}`;
+          md += '\n';
         });
-        await load();
-      } catch (error) {
-        showError(error);
+        md += '\n';
+      });
+      const uncategorized = state.tasks.filter(t => !t.categoryId);
+      if (uncategorized.length) {
+        md += '## Ohne Kategorie\n\n';
+        uncategorized.forEach(task => {
+          md += `- [${task.done ? 'x' : ' '}] ${task.title}`;
+          if (task.description) md += ` — ${task.description}`;
+          md += '\n';
+        });
       }
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'aufgaben-export.md';
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
-    async function deleteTask(id) {
-      try {
-        if (!confirm('Aufgabe löschen?')) return;
-        await api(`/api/tasks/${id}`, { method: 'DELETE' });
-        await load();
-      } catch (error) {
-        showError(error);
-      }
-    }
+    function importMarkdown() {
+      const markdown = document.getElementById('markdownInput').value.trim();
+      if (!markdown) return;
 
-    async function exportMarkdown() {
-      try {
-        const text = await api('/api/export/markdown');
-        const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'aufgaben-export.md';
-        a.click();
-        URL.revokeObjectURL(url);
-      } catch (error) {
-        showError(error);
-      }
-    }
+      let currentCategoryId = null;
+      markdown.split(/\r?\n/).forEach(line => {
+        const heading = line.match(/^##\s+(.+)/);
+        if (heading) {
+          const name = heading[1].trim();
+          if (name.toLowerCase() === 'ohne kategorie') {
+            currentCategoryId = null;
+          } else {
+            const category = { id: uid(), name, createdAt: new Date().toISOString() };
+            state.categories.unshift(category);
+            currentCategoryId = category.id;
+          }
+          return;
+        }
 
-    async function importMarkdown() {
-      try {
-        const markdown = document.getElementById('markdownInput').value.trim();
-        if (!markdown) return;
-        await api('/api/import/markdown', { method: 'POST', body: JSON.stringify({ markdown }) });
-        document.getElementById('markdownInput').value = '';
-        await load();
-      } catch (error) {
-        showError(error);
-      }
+        const taskMatch = line.match(/^- \[( |x)\] (.+)$/i);
+        if (taskMatch) {
+          const done = taskMatch[1].toLowerCase() === 'x';
+          const body = taskMatch[2];
+          const parts = body.split(' — ');
+          const title = (parts.shift() || '').trim();
+          const description = parts.join(' — ').trim();
+          if (!title) return;
+          state.tasks.unshift({
+            id: uid(),
+            title,
+            description,
+            done,
+            categoryId: currentCategoryId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      });
+
+      document.getElementById('markdownInput').value = '';
+      saveState();
+      render();
     }
 
     function escapeHtml(value) {
@@ -375,7 +416,7 @@
     window.toggleTask = toggleTask;
     window.deleteTask = deleteTask;
 
-    load().catch(showError);
+    render();
   </script>
 </body>
 </html>

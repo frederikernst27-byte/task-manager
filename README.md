@@ -4,40 +4,21 @@ Ein allgemeiner Aufgabenmanager mit:
 
 - editierbaren Kategorien
 - Aufgaben erstellen, bearbeiten, abhaken, löschen
-- persistenter SQLite-Datenbank
 - Statistik pro Kategorie
 - Markdown-Export
 - Markdown-Import
+- Speicherung per `localStorage`
 
-## Stack
+## Deployment
 
-- Node.js
-- Express
-- SQLite (`better-sqlite3`)
-- statisches Frontend
+Diese Version ist komplett statisch und daher sehr einfach auf Vercel, GitHub Pages oder Netlify deploybar.
 
-## Start
+## Hinweis
 
-```bash
-npm install
-npm start
-```
+Die Daten werden im Browser gespeichert. Das heißt:
 
-Dann öffnen:
-
-```bash
-http://localhost:3000
-```
-
-## Datenbank
-
-Die Aufgaben liegen in:
-
-```bash
-data/tasks.db
-```
-
-Damit kann später auch direkt auf die gespeicherten Aufgaben zugegriffen werden.
+- sie bleiben für denselben Browser/dasselbe Gerät erhalten
+- sie synchronisieren sich nicht automatisch zwischen verschiedenen Geräten
 
 ## Markdown Export
 
