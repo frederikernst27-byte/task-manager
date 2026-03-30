@@ -43,7 +43,7 @@
     .list { display:grid; gap:10px; }
     .category-card, .task-card { background: rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:18px; padding:14px; }
     .category-card.active { outline:2px solid rgba(96,165,250,.5); }
-    input, textarea {
+    input, textarea, select {
       width: 100%; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,0.04);
       color: var(--text); border:1px solid rgba(255,255,255,0.08); font: inherit; outline:none;
     }
@@ -54,13 +54,52 @@
     .btn-danger { background: rgba(251,113,133,.18); border:1px solid rgba(251,113,133,.2); color:white; }
     .small { color: var(--muted); font-size: .9rem; }
     .task-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .task-main { display:flex; gap:12px; align-items:flex-start; }
+    .task-check {
+      width: 26px;
+      height: 26px;
+      min-width: 26px;
+      border-radius: 10px;
+      border: 2px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.04);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+      margin-top: 2px;
+    }
+    .task-check::after {
+      content: '✓';
+      font-size: 14px;
+      font-weight: 900;
+      color: transparent;
+      transform: scale(0.6);
+      transition: transform .22s ease, color .22s ease;
+    }
+    .task-check.checked {
+      background: linear-gradient(135deg, var(--done), #7cf2c0);
+      border-color: transparent;
+      box-shadow: 0 0 0 6px rgba(52,211,153,0.12);
+      animation: pop .28s ease;
+    }
+    .task-check.checked::after {
+      color: #04140d;
+      transform: scale(1);
+    }
+    @keyframes pop {
+      0% { transform: scale(0.82); }
+      60% { transform: scale(1.12); }
+      100% { transform: scale(1); }
+    }
     .task-meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .pill { padding:6px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); font-size:.8rem; }
     .done { color: var(--done); }
     .toolbar { display:flex; gap:10px; flex-wrap:wrap; }
     .task-card.done-card { border-color: rgba(52,211,153,.25); background: rgba(52,211,153,.06); }
+    .task-card.done-card strong { text-decoration: line-through; text-decoration-thickness: 2px; }
     @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 640px) { .stats { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .stats { grid-template-columns: 1fr; } .task-top { flex-direction: column; } }
   </style>
 </head>
 <body>
@@ -100,6 +139,9 @@
         </div>
         <div class="list" style="margin-bottom:18px;">
           <input id="taskTitle" placeholder="Aufgabentitel" />
+          <select id="taskCategorySelect">
+            <option value="">Ohne Kategorie</option>
+          </select>
           <textarea id="taskDescription" placeholder="Beschreibung / Notizen"></textarea>
           <button class="btn-primary" id="saveTaskBtn">Aufgabe speichern</button>
         </div>
@@ -110,11 +152,15 @@
         <div class="panel-header">
           <div>
             <h2>Markdown Import</h2>
-            <div class="small">Importiert Kategorien und Aufgaben aus Markdown</div>
+            <div class="small">Importiert Kategorien und Aufgaben aus normalem Markdown</div>
           </div>
         </div>
         <div class="list">
-          <textarea id="markdownInput" placeholder="# Aufgaben\n\n## Arbeit\n- [ ] Ticket prüfen\n- [x] Mail beantworten"></textarea>
+          <textarea id="markdownInput" placeholder="# Aufgaben
+
+## Arbeit
+- [ ] Ticket prüfen
+- [x] Mail beantworten"></textarea>
           <button class="btn-primary" id="runImportBtn">Import ausführen</button>
         </div>
       </aside>
@@ -146,6 +192,7 @@
     function render() {
       renderStats();
       renderCategories();
+      renderCategorySelect();
       renderTasks();
     }
 
@@ -160,6 +207,20 @@
         <div class="stat"><div class="label">Offen</div><div class="value">${open}</div></div>
         <div class="stat"><div class="label">Kategorien</div><div class="value">${categories}</div></div>
       `;
+    }
+
+    function renderCategorySelect() {
+      const select = document.getElementById('taskCategorySelect');
+      const previous = select.value;
+      select.innerHTML = `<option value="">Ohne Kategorie</option>` + state.categories.map(cat => `<option value="${cat.id}">${escapeHtml(cat.name)}</option>`).join('');
+      if (editingTaskId) {
+        const task = state.tasks.find(t => t.id === editingTaskId);
+        select.value = task?.categoryId || '';
+      } else if (selectedCategoryId) {
+        select.value = selectedCategoryId;
+      } else {
+        select.value = previous || '';
+      }
     }
 
     function renderCategories() {
@@ -206,17 +267,19 @@
         return `
           <div class="task-card ${task.done ? 'done-card' : ''}">
             <div class="task-top">
-              <div>
-                <strong>${escapeHtml(task.title)}</strong>
-                <div class="small">${escapeHtml(task.description || '')}</div>
-                <div class="task-meta">
-                  <span class="pill ${task.done ? 'done' : ''}">${task.done ? 'Erledigt' : 'Offen'}</span>
-                  <span class="pill">${escapeHtml(category?.name || 'Ohne Kategorie')}</span>
+              <div class="task-main">
+                <div class="task-check ${task.done ? 'checked' : ''}" onclick="toggleTask('${task.id}')"></div>
+                <div>
+                  <strong>${escapeHtml(task.title)}</strong>
+                  <div class="small">${escapeHtml(task.description || '')}</div>
+                  <div class="task-meta">
+                    <span class="pill ${task.done ? 'done' : ''}">${task.done ? 'Erledigt' : 'Offen'}</span>
+                    <span class="pill">${escapeHtml(category?.name || 'Ohne Kategorie')}</span>
+                  </div>
                 </div>
               </div>
               <div class="toolbar">
                 <button class="btn-secondary" onclick="editTask('${task.id}')">Bearbeiten</button>
-                <button class="btn-secondary" onclick="toggleTask('${task.id}')">${task.done ? 'Öffnen' : 'Abhaken'}</button>
                 <button class="btn-danger" onclick="deleteTask('${task.id}')">Löschen</button>
               </div>
             </div>
@@ -261,6 +324,7 @@
     function saveTask() {
       const title = document.getElementById('taskTitle').value.trim();
       const description = document.getElementById('taskDescription').value.trim();
+      const categoryId = document.getElementById('taskCategorySelect').value || null;
       if (!title) return;
 
       if (editingTaskId) {
@@ -268,7 +332,7 @@
         if (!task) return;
         task.title = title;
         task.description = description;
-        task.categoryId = selectedCategoryId || task.categoryId || null;
+        task.categoryId = categoryId;
         task.updatedAt = new Date().toISOString();
       } else {
         state.tasks.unshift({
@@ -276,7 +340,7 @@
           title,
           description,
           done: false,
-          categoryId: selectedCategoryId || null,
+          categoryId,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -293,7 +357,7 @@
       editingTaskId = id;
       document.getElementById('taskTitle').value = task.title;
       document.getElementById('taskDescription').value = task.description || '';
-      selectedCategoryId = task.categoryId || null;
+      document.getElementById('taskCategorySelect').value = task.categoryId || '';
       render();
     }
 
@@ -301,6 +365,7 @@
       editingTaskId = null;
       document.getElementById('taskTitle').value = '';
       document.getElementById('taskDescription').value = '';
+      document.getElementById('taskCategorySelect').value = selectedCategoryId || '';
     }
 
     function toggleTask(id) {
