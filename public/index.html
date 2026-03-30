@@ -133,9 +133,18 @@
         headers: { 'Content-Type': 'application/json' },
         ...options,
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || `Request failed: ${res.status}`);
+      }
       const type = res.headers.get('content-type') || '';
       return type.includes('application/json') ? res.json() : res.text();
+    }
+
+    function showError(error) {
+      const message = error?.message || String(error) || 'Unbekannter Fehler';
+      alert(`Speichern fehlgeschlagen: ${message}`);
+      console.error(error);
     }
 
     async function load() {
@@ -211,25 +220,37 @@
     }
 
     async function addCategory() {
-      const name = document.getElementById('newCategoryName').value.trim();
-      if (!name) return;
-      await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
-      document.getElementById('newCategoryName').value = '';
-      await load();
+      try {
+        const name = document.getElementById('newCategoryName').value.trim();
+        if (!name) return;
+        await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
+        document.getElementById('newCategoryName').value = '';
+        await load();
+      } catch (error) {
+        showError(error);
+      }
     }
 
     async function renameCategory(id, currentName) {
-      const name = prompt('Neuer Kategoriename', currentName);
-      if (!name || !name.trim()) return;
-      await api(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
-      await load();
+      try {
+        const name = prompt('Neuer Kategoriename', currentName);
+        if (!name || !name.trim()) return;
+        await api(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
+        await load();
+      } catch (error) {
+        showError(error);
+      }
     }
 
     async function deleteCategory(id) {
-      if (!confirm('Kategorie und zugehörige Aufgaben löschen?')) return;
-      await api(`/api/categories/${id}`, { method: 'DELETE' });
-      if (selectedCategoryId === id) selectedCategoryId = null;
-      await load();
+      try {
+        if (!confirm('Kategorie und zugehörige Aufgaben löschen?')) return;
+        await api(`/api/categories/${id}`, { method: 'DELETE' });
+        if (selectedCategoryId === id) selectedCategoryId = null;
+        await load();
+      } catch (error) {
+        showError(error);
+      }
     }
 
     function selectCategory(id) {
@@ -239,23 +260,27 @@
     }
 
     async function saveTask() {
-      const title = document.getElementById('taskTitle').value.trim();
-      const description = document.getElementById('taskDescription').value.trim();
-      if (!title) return;
-      if (editingTaskId) {
-        const existing = tasks.find(t => t.id === editingTaskId);
-        await api(`/api/tasks/${editingTaskId}`, {
-          method: 'PUT',
-          body: JSON.stringify({ title, description, done: !!existing.done, categoryId: selectedCategoryId || existing.categoryId || null })
-        });
-      } else {
-        await api('/api/tasks', {
-          method: 'POST',
-          body: JSON.stringify({ title, description, categoryId: selectedCategoryId || null })
-        });
+      try {
+        const title = document.getElementById('taskTitle').value.trim();
+        const description = document.getElementById('taskDescription').value.trim();
+        if (!title) return;
+        if (editingTaskId) {
+          const existing = tasks.find(t => t.id === editingTaskId);
+          await api(`/api/tasks/${editingTaskId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ title, description, done: !!existing.done, categoryId: selectedCategoryId || existing.categoryId || null })
+          });
+        } else {
+          await api('/api/tasks', {
+            method: 'POST',
+            body: JSON.stringify({ title, description, categoryId: selectedCategoryId || null })
+          });
+        }
+        clearTaskForm();
+        await load();
+      } catch (error) {
+        showError(error);
       }
-      clearTaskForm();
-      await load();
     }
 
     function editTask(task) {
@@ -274,42 +299,58 @@
     }
 
     async function toggleTask(id, done) {
-      const existing = tasks.find(t => t.id === id);
-      await api(`/api/tasks/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          title: existing.title,
-          description: existing.description,
-          categoryId: existing.categoryId,
-          done
-        })
-      });
-      await load();
+      try {
+        const existing = tasks.find(t => t.id === id);
+        await api(`/api/tasks/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            title: existing.title,
+            description: existing.description,
+            categoryId: existing.categoryId,
+            done
+          })
+        });
+        await load();
+      } catch (error) {
+        showError(error);
+      }
     }
 
     async function deleteTask(id) {
-      if (!confirm('Aufgabe löschen?')) return;
-      await api(`/api/tasks/${id}`, { method: 'DELETE' });
-      await load();
+      try {
+        if (!confirm('Aufgabe löschen?')) return;
+        await api(`/api/tasks/${id}`, { method: 'DELETE' });
+        await load();
+      } catch (error) {
+        showError(error);
+      }
     }
 
     async function exportMarkdown() {
-      const text = await api('/api/export/markdown');
-      const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'aufgaben-export.md';
-      a.click();
-      URL.revokeObjectURL(url);
+      try {
+        const text = await api('/api/export/markdown');
+        const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'aufgaben-export.md';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        showError(error);
+      }
     }
 
     async function importMarkdown() {
-      const markdown = document.getElementById('markdownInput').value.trim();
-      if (!markdown) return;
-      await api('/api/import/markdown', { method: 'POST', body: JSON.stringify({ markdown }) });
-      document.getElementById('markdownInput').value = '';
-      await load();
+      try {
+        const markdown = document.getElementById('markdownInput').value.trim();
+        if (!markdown) return;
+        await api('/api/import/markdown', { method: 'POST', body: JSON.stringify({ markdown }) });
+        document.getElementById('markdownInput').value = '';
+        await load();
+      } catch (error) {
+        showError(error);
+      }
     }
 
     function escapeHtml(value) {
@@ -334,7 +375,7 @@
     window.toggleTask = toggleTask;
     window.deleteTask = deleteTask;
 
-    load();
+    load().catch(showError);
   </script>
 </body>
 </html>
