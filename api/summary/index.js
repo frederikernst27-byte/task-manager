@@ -1,4 +1,4 @@
-import db from './db.js';
+import db from '../db.js';
 
 export default function handler(req, res) {
   const total = db.prepare('SELECT COUNT(*) as count FROM tasks').get().count;
