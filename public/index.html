@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Manager</title>
+  <style>
+    :root {
+      --bg: #0a1020;
+      --panel: rgba(17, 24, 39, 0.92);
+      --border: rgba(255,255,255,0.08);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --accent2: #a78bfa;
+      --done: #34d399;
+      --danger: #fb7185;
+      --radius: 20px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, sans-serif;
+      background: linear-gradient(180deg, #09101d, #0a1020);
+      color: var(--text);
+      padding: 18px;
+    }
+    .app { max-width: 1300px; margin: 0 auto; display: grid; gap: 18px; }
+    .hero, .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      padding: 20px;
+      backdrop-filter: blur(14px);
+    }
+    .hero h1 { margin: 0; font-size: clamp(2rem, 4vw, 3rem); }
+    .hero p { color: var(--muted); line-height: 1.7; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+    .stat { padding: 16px; border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); }
+    .stat .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; }
+    .stat .value { font-size: 1.8rem; font-weight: 800; margin-top: 8px; }
+    .layout { display: grid; grid-template-columns: 300px 1fr 360px; gap: 18px; }
+    .panel-header { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+    .list { display:grid; gap:10px; }
+    .category-card, .task-card { background: rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:18px; padding:14px; }
+    .category-card.active { outline:2px solid rgba(96,165,250,.5); }
+    input, textarea, select {
+      width: 100%; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,0.04);
+      color: var(--text); border:1px solid rgba(255,255,255,0.08); font: inherit; outline:none;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    button { border:none; border-radius:14px; padding:12px 14px; font:inherit; font-weight:700; cursor:pointer; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color:#07111d; }
+    .btn-secondary { background: rgba(255,255,255,0.04); border:1px solid var(--border); color: var(--text); }
+    .btn-danger { background: rgba(251,113,133,.18); border:1px solid rgba(251,113,133,.2); color:white; }
+    .small { color: var(--muted); font-size: .9rem; }
+    .task-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .task-meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .pill { padding:6px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); font-size:.8rem; }
+    .done { color: var(--done); }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; }
+    .task-card.done-card { border-color: rgba(52,211,153,.25); background: rgba(52,211,153,.06); }
+    @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 640px) { .stats { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="hero">
+      <h1>Task Manager</h1>
+      <p>Allgemeiner Aufgabenmanager mit editierbaren Kategorien, persistent gespeicherter Datenbank, Markdown-Import/Export und Statistiken pro Kategorie.</p>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <div class="layout">
+      <aside class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Kategorien</h2>
+            <div class="small">Selbst anlegen, umbenennen, löschen</div>
+          </div>
+        </div>
+        <div class="list" id="categoryList"></div>
+        <div class="panel-header" style="margin-top:16px;"><h3>Neue Kategorie</h3></div>
+        <div class="list">
+          <input id="newCategoryName" placeholder="Kategorie-Name" />
+          <button class="btn-primary" id="addCategoryBtn">Kategorie erstellen</button>
+        </div>
+      </aside>
+
+      <main class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 id="tasksTitle">Aufgaben</h2>
+            <div class="small">Aufgaben erstellen, bearbeiten, abhaken und löschen</div>
+          </div>
+          <div class="toolbar">
+            <button class="btn-secondary" id="exportBtn">Markdown exportieren</button>
+            <button class="btn-secondary" id="importBtn">Markdown importieren</button>
+          </div>
+        </div>
+        <div class="list" style="margin-bottom:18px;">
+          <input id="taskTitle" placeholder="Aufgabentitel" />
+          <textarea id="taskDescription" placeholder="Beschreibung / Notizen"></textarea>
+          <button class="btn-primary" id="saveTaskBtn">Aufgabe speichern</button>
+        </div>
+        <div class="list" id="taskList"></div>
+      </main>
+
+      <aside class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Markdown Import</h2>
+            <div class="small">Importiert Kategorien und Aufgaben aus Markdown</div>
+          </div>
+        </div>
+        <div class="list">
+          <textarea id="markdownInput" placeholder="# Aufgaben\n\n## Arbeit\n- [ ] Ticket prüfen\n- [x] Mail beantworten"></textarea>
+          <button class="btn-primary" id="runImportBtn">Import ausführen</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    let categories = [];
+    let tasks = [];
+    let selectedCategoryId = null;
+    let editingTaskId = null;
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const type = res.headers.get('content-type') || '';
+      return type.includes('application/json') ? res.json() : res.text();
+    }
+
+    async function load() {
+      categories = await api('/api/categories');
+      tasks = await api('/api/tasks');
+      const summary = await api('/api/summary');
+      renderStats(summary);
+      renderCategories();
+      renderTasks();
+    }
+
+    function renderStats(summary) {
+      const stats = document.getElementById('stats');
+      stats.innerHTML = `
+        <div class="stat"><div class="label">Gesamt</div><div class="value">${summary.total}</div></div>
+        <div class="stat"><div class="label">Erledigt</div><div class="value">${summary.done}</div></div>
+        <div class="stat"><div class="label">Offen</div><div class="value">${summary.open}</div></div>
+        <div class="stat"><div class="label">Kategorien</div><div class="value">${summary.categories}</div></div>
+      `;
+    }
+
+    function renderCategories() {
+      const list = document.getElementById('categoryList');
+      if (!categories.length) {
+        list.innerHTML = '<div class="category-card small">Noch keine Kategorien vorhanden.</div>';
+        return;
+      }
+      list.innerHTML = categories.map(cat => `
+        <div class="category-card ${selectedCategoryId === cat.id ? 'active' : ''}">
+          <div class="task-top">
+            <div>
+              <strong>${escapeHtml(cat.name)}</strong>
+              <div class="small">${cat.doneTasks}/${cat.totalTasks} erledigt</div>
+            </div>
+            <div class="toolbar">
+              <button class="btn-secondary" onclick="selectCategory(${cat.id})">Öffnen</button>
+              <button class="btn-secondary" onclick="renameCategory(${cat.id}, ${JSON.stringify(cat.name)})">Bearbeiten</button>
+              <button class="btn-danger" onclick="deleteCategory(${cat.id})">Löschen</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderTasks() {
+      const list = document.getElementById('taskList');
+      const filtered = selectedCategoryId ? tasks.filter(t => t.categoryId === selectedCategoryId) : tasks;
+      const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+      document.getElementById('tasksTitle').textContent = selectedCategory ? `Aufgaben – ${selectedCategory.name}` : 'Aufgaben';
+      if (!filtered.length) {
+        list.innerHTML = '<div class="task-card small">Noch keine Aufgaben in dieser Ansicht.</div>';
+        return;
+      }
+      list.innerHTML = filtered.map(task => `
+        <div class="task-card ${task.done ? 'done-card' : ''}">
+          <div class="task-top">
+            <div>
+              <strong>${escapeHtml(task.title)}</strong>
+              <div class="small">${escapeHtml(task.description || '')}</div>
+              <div class="task-meta">
+                <span class="pill ${task.done ? 'done' : ''}">${task.done ? 'Erledigt' : 'Offen'}</span>
+                <span class="pill">${escapeHtml(task.categoryName || 'Ohne Kategorie')}</span>
+              </div>
+            </div>
+            <div class="toolbar">
+              <button class="btn-secondary" onclick='editTask(${JSON.stringify(task)})'>Bearbeiten</button>
+              <button class="btn-secondary" onclick="toggleTask(${task.id}, ${task.done ? 'false' : 'true'})">${task.done ? 'Öffnen' : 'Abhaken'}</button>
+              <button class="btn-danger" onclick="deleteTask(${task.id})">Löschen</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function addCategory() {
+      const name = document.getElementById('newCategoryName').value.trim();
+      if (!name) return;
+      await api('/api/categories', { method: 'POST', body: JSON.stringify({ name }) });
+      document.getElementById('newCategoryName').value = '';
+      await load();
+    }
+
+    async function renameCategory(id, currentName) {
+      const name = prompt('Neuer Kategoriename', currentName);
+      if (!name || !name.trim()) return;
+      await api(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
+      await load();
+    }
+
+    async function deleteCategory(id) {
+      if (!confirm('Kategorie und zugehörige Aufgaben löschen?')) return;
+      await api(`/api/categories/${id}`, { method: 'DELETE' });
+      if (selectedCategoryId === id) selectedCategoryId = null;
+      await load();
+    }
+
+    function selectCategory(id) {
+      selectedCategoryId = selectedCategoryId === id ? null : id;
+      renderCategories();
+      renderTasks();
+    }
+
+    async function saveTask() {
+      const title = document.getElementById('taskTitle').value.trim();
+      const description = document.getElementById('taskDescription').value.trim();
+      if (!title) return;
+      if (editingTaskId) {
+        const existing = tasks.find(t => t.id === editingTaskId);
+        await api(`/api/tasks/${editingTaskId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ title, description, done: !!existing.done, categoryId: selectedCategoryId || existing.categoryId || null })
+        });
+      } else {
+        await api('/api/tasks', {
+          method: 'POST',
+          body: JSON.stringify({ title, description, categoryId: selectedCategoryId || null })
+        });
+      }
+      clearTaskForm();
+      await load();
+    }
+
+    function editTask(task) {
+      editingTaskId = task.id;
+      document.getElementById('taskTitle').value = task.title;
+      document.getElementById('taskDescription').value = task.description || '';
+      selectedCategoryId = task.categoryId || null;
+      renderCategories();
+      renderTasks();
+    }
+
+    function clearTaskForm() {
+      editingTaskId = null;
+      document.getElementById('taskTitle').value = '';
+      document.getElementById('taskDescription').value = '';
+    }
+
+    async function toggleTask(id, done) {
+      const existing = tasks.find(t => t.id === id);
+      await api(`/api/tasks/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: existing.title,
+          description: existing.description,
+          categoryId: existing.categoryId,
+          done
+        })
+      });
+      await load();
+    }
+
+    async function deleteTask(id) {
+      if (!confirm('Aufgabe löschen?')) return;
+      await api(`/api/tasks/${id}`, { method: 'DELETE' });
+      await load();
+    }
+
+    async function exportMarkdown() {
+      const text = await api('/api/export/markdown');
+      const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'aufgaben-export.md';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importMarkdown() {
+      const markdown = document.getElementById('markdownInput').value.trim();
+      if (!markdown) return;
+      await api('/api/import/markdown', { method: 'POST', body: JSON.stringify({ markdown }) });
+      document.getElementById('markdownInput').value = '';
+      await load();
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    document.getElementById('addCategoryBtn').addEventListener('click', addCategory);
+    document.getElementById('saveTaskBtn').addEventListener('click', saveTask);
+    document.getElementById('exportBtn').addEventListener('click', exportMarkdown);
+    document.getElementById('importBtn').addEventListener('click', () => document.getElementById('markdownInput').focus());
+    document.getElementById('runImportBtn').addEventListener('click', importMarkdown);
+
+    window.selectCategory = selectCategory;
+    window.renameCategory = renameCategory;
+    window.deleteCategory = deleteCategory;
+    window.editTask = editTask;
+    window.toggleTask = toggleTask;
+    window.deleteTask = deleteTask;
+
+    load();
+  </script>
+</body>
+</html>
