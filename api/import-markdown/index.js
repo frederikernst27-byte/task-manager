@@ -1,6 +1,6 @@
-import db from '../db.js';
+const db = require('../db.cjs');
 
-export default function handler(req, res) {
+module.exports = function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const markdown = String(req.body?.markdown || '');
@@ -36,4 +36,4 @@ export default function handler(req, res) {
   });
 
   res.status(200).json({ ok: true });
-}
+};

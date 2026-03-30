@@ -1,6 +1,6 @@
-import db from '../db.js';
+const db = require('../db.cjs');
 
-export default function handler(req, res) {
+module.exports = function handler(req, res) {
   const categories = db.prepare('SELECT * FROM categories ORDER BY createdAt DESC').all();
   const uncategorized = db.prepare('SELECT * FROM tasks WHERE categoryId IS NULL ORDER BY createdAt DESC').all();
   let md = '# Aufgaben Export\n\n';
@@ -28,4 +28,4 @@ export default function handler(req, res) {
 
   res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
   res.status(200).send(md);
-}
+};

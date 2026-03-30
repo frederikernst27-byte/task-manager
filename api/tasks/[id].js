@@ -1,6 +1,6 @@
-import db from '../db.js';
+const db = require('../db.cjs');
 
-export default function handler(req, res) {
+module.exports = function handler(req, res) {
   const id = req.query.id;
 
   if (req.method === 'PUT') {
@@ -21,4 +21,4 @@ export default function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
-}
+};
